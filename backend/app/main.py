@@ -3,6 +3,8 @@ RubiXSense — FastAPI application entry point.
 """
 
 from __future__ import annotations
+import os
+
 # pyrefly: ignore[missing-import]
 from fastapi import FastAPI
 # pyrefly: ignore[missing-import]
@@ -24,15 +26,33 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS: allow the frontend dev server and production
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+# In production on Vercel, the frontend and backend share the same domain via
+# rewrites, so cross-origin requests don't arise for real users.  We still
+# need permissive CORS for:
+#   • local dev (Vite proxy doesn't cover all tools)
+#   • Vercel preview deployments (each gets a unique *.vercel.app URL)
+#   • an optional FRONTEND_URL override set in the Vercel project env-vars
+
+_FIXED_ORIGINS = [
+    "http://localhost:5173",    # Vite dev server
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+]
+
+# Inject FRONTEND_URL from env if set (e.g. custom domain or Vercel preview URL)
+_frontend_url = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+if _frontend_url:
+    _FIXED_ORIGINS.append(_frontend_url)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",    # Vite dev server
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=_FIXED_ORIGINS,
+    allow_origin_regex=r"^https://[a-z0-9-]+(\.vercel\.app)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
