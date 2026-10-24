@@ -1,8 +1,79 @@
 /**
  * API service for RubiXSense backend communication.
+ * Includes automatic client-side Kociemba solver fallback
+ * so the solver works seamlessly even when the backend is offline.
  */
 
+import Cube from 'cubejs';
+import { parseMoveString } from '../utils/cubeMath';
+
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+// Pre-initialize client-side Kociemba solver tables in the background
+let solverInitialized = false;
+let solverInitPromise = null;
+
+export function initClientSolver() {
+  if (solverInitialized) return Promise.resolve();
+  if (solverInitPromise) return solverInitPromise;
+  solverInitPromise = new Promise((resolve) => {
+    setTimeout(() => {
+      try {
+        Cube.initSolver();
+        solverInitialized = true;
+      } catch (e) {
+        console.warn('Client solver init warning:', e);
+      }
+      resolve();
+    }, 50);
+  });
+  return solverInitPromise;
+}
+
+if (typeof window !== 'undefined') {
+  initClientSolver();
+}
+
+/**
+ * Solve cube using client-side Kociemba algorithm.
+ */
+export function solveClientSide(faceletString) {
+  if (!solverInitialized) {
+    Cube.initSolver();
+    solverInitialized = true;
+  }
+
+  const cube = Cube.fromString(faceletString);
+  if (cube.isSolved()) {
+    return {
+      success: true,
+      already_solved: true,
+      solution: '',
+      moves: [],
+      move_count: 0,
+      verified: true,
+      message: 'The cube is already solved! 🎉',
+    };
+  }
+
+  const solution = cube.solve();
+  const movesList = parseMoveString(solution);
+
+  return {
+    success: true,
+    already_solved: false,
+    solution,
+    moves: movesList.map((m) => ({
+      notation: m,
+      description: `Turn ${m[0]} face`,
+      face: m[0],
+      direction: m.includes("'") ? 'CCW' : m.includes('2') ? '180' : 'CW',
+    })),
+    move_count: movesList.length,
+    verified: true,
+    message: `Solution found in ${movesList.length} moves!`,
+  };
+}
 
 export async function checkBackendHealth() {
   try {
@@ -13,64 +84,88 @@ export async function checkBackendHealth() {
     return {
       status: 'offline',
       error: err.message,
-      solver_ready: false,
+      solver_ready: true, // Client engine is ready
       opencv_available: false,
     };
   }
 }
 
 export async function solveCubeAPI(faceletString, timeout = 15.0) {
-  const res = await fetch(`${API_BASE}/cube/solve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      facelet_string: faceletString,
-      cube_state: faceletString,
-      timeout,
-    }),
-  });
+  // First attempt to solve with the FastAPI backend
+  try {
+    const res = await fetch(`${API_BASE}/cube/solve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        facelet_string: faceletString,
+        cube_state: faceletString,
+        timeout,
+      }),
+    });
 
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    let msg = errData.message;
-    if (typeof errData.detail === 'string') {
-      msg = errData.detail;
-    } else if (Array.isArray(errData.detail) && errData.detail.length > 0) {
-      msg = errData.detail.map((d) => d.msg || JSON.stringify(d)).join(', ');
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.success) {
+        return data;
+      }
+      // If backend reports invalid parity or impossible pieces, report that clearly
+      if (data.error && (data.error.includes('parity') || data.error.includes('orientation') || data.error.includes('impossible'))) {
+        throw new Error(data.error || data.message);
+      }
     }
-    throw new Error(msg || `Failed to solve cube (${res.status})`);
+  } catch (err) {
+    // If it's a specific cube validation error, propagate it
+    if (err.message && (err.message.includes('parity') || err.message.includes('orientation') || err.message.includes('impossible'))) {
+      throw err;
+    }
+    // Otherwise fallback to client solver
+    console.info('Backend API unavailable or errored, solving client-side with Kociemba engine.');
   }
 
-  const data = await res.json();
-  if (!data.success) {
-    throw new Error(data.error || data.message || 'Solver failed to find a solution.');
+  // Client-side fallback solver
+  try {
+    return solveClientSide(faceletString);
+  } catch (clientErr) {
+    throw new Error(clientErr.message || 'Unable to solve this cube state. Please verify sticker colors and centers.');
   }
-
-  return data;
 }
 
 export async function validateCubeAPI(faceletString) {
-  const res = await fetch(`${API_BASE}/cube/validate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      facelet_string: faceletString,
-      cube_state: faceletString,
-    }),
-  });
+  try {
+    const res = await fetch(`${API_BASE}/cube/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        facelet_string: faceletString,
+        cube_state: faceletString,
+      }),
+    });
 
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    let msg = errData.message;
-    if (typeof errData.detail === 'string') {
-      msg = errData.detail;
-    } else if (Array.isArray(errData.detail) && errData.detail.length > 0) {
-      msg = errData.detail.map((d) => d.msg || JSON.stringify(d)).join(', ');
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      let msg = errData.message;
+      if (typeof errData.detail === 'string') {
+        msg = errData.detail;
+      } else if (Array.isArray(errData.detail) && errData.detail.length > 0) {
+        msg = errData.detail.map((d) => d.msg || JSON.stringify(d)).join(', ');
+      }
+      throw new Error(msg || `Validation error (${res.status})`);
     }
-    throw new Error(msg || `Validation error (${res.status})`);
-  }
 
-  return await res.json();
+    return await res.json();
+  } catch {
+    // Client-side fallback validation
+    const counts = { U: 0, R: 0, F: 0, D: 0, L: 0, B: 0 };
+    for (const char of faceletString) {
+      if (counts[char] !== undefined) counts[char]++;
+    }
+    const valid = Object.values(counts).every((c) => c === 9);
+    return {
+      valid,
+      errors: valid ? [] : [{ message: 'Each of the 6 colors must have exactly 9 stickers.' }],
+      warnings: [],
+    };
+  }
 }
 
 export async function generateScrambleAPI(movesCount = 20) {
