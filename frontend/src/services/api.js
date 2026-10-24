@@ -4,7 +4,7 @@
  * so the solver works seamlessly even when the backend is offline.
  */
 
-import Cube from 'cubejs';
+import Cube from '../utils/kociemba.js';
 import { parseMoveString } from '../utils/cubeMath';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
