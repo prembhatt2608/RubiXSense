@@ -137,7 +137,12 @@ export default function App() {
         origin: { y: 0.7 },
       });
     } catch (err) {
-      setSolverError(err.message || 'Unable to solve this cube state.');
+      const msg = err.message || '';
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Load failed')) {
+        setSolverError('Backend is offline. Please ensure the backend is running with: cd backend && py -m uvicorn app.main:app --reload');
+      } else {
+        setSolverError(msg || 'Unable to solve this cube state.');
+      }
     } finally {
       setIsSolving(false);
     }

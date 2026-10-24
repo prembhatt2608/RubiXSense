@@ -1231,11 +1231,57 @@ body {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 4px;
-  margin: 0 auto 1.5rem auto;
+  margin: 0 auto 0.75rem auto;
 }
 .preview-cell {
   border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: all 0.15s ease;
+}
+.preview-cell.clickable {
+  cursor: pointer;
+}
+.preview-cell.clickable:hover {
+  transform: scale(1.06);
+  filter: brightness(1.1);
+}
+.preview-cell.preview-cell-selected {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+}
+.preview-center {
+  outline: 1px dashed rgba(255, 255, 255, 0.5);
+  cursor: default !important;
+}
+
+.scanner-palette-bar {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 1rem;
+}
+.palette-chip {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   border: 1px solid rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.palette-chip:hover {
+  transform: scale(1.18);
+}
+.palette-chip.active {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+.preview-hint-text {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-align: center;
+  margin-bottom: 0.6rem;
 }
 
 .action-buttons-group {

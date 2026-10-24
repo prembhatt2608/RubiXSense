@@ -31,15 +31,42 @@ try:
 except ImportError:
     pass
 
-# Provide Python 3.12+ compatibility shim for rubik_solver's past.builtins import
+# Provide Python 3.12+ compatibility shim for rubik_solver's past.builtins import.
+# On Python 3.12+, the `imp` module was removed, causing `past.translation` to crash.
+# We must inject all `past.*` submodules into sys.modules BEFORE anything tries to
+# import the real `past` package, so that its broken __init__.py never executes.
 import types
-if 'past' not in sys.modules:
+
+def _install_past_shim() -> None:
+    """Pre-seed sys.modules with a minimal `past` shim to prevent imp import errors."""
+    if 'past.translation' in sys.modules:
+        return  # Already loaded fine (older Python or patched future)
+
+    # Create the shim modules
     _past = types.ModuleType('past')
-    _past_b = types.ModuleType('past.builtins')
-    setattr(_past_b, 'basestring', str)
-    setattr(_past, 'builtins', _past_b)
-    sys.modules['past'] = _past
-    sys.modules['past.builtins'] = _past_b
+    _past.__path__ = []  # Mark as package
+    _past.__package__ = 'past'
+
+    _past_builtins = types.ModuleType('past.builtins')
+    _past_builtins.__package__ = 'past'
+    # Provide the attributes rubik_solver actually needs
+    _past_builtins.basestring = str  # type: ignore[attr-defined]
+
+    _past_translation = types.ModuleType('past.translation')
+    _past_translation.__package__ = 'past'
+    # Provide a no-op install_hooks
+    _past_translation.install_hooks = lambda *a, **kw: None  # type: ignore[attr-defined]
+
+    _past.builtins = _past_builtins  # type: ignore[attr-defined]
+    _past.translation = _past_translation  # type: ignore[attr-defined]
+
+    # Inject into sys.modules so that `from past.builtins import basestring` works
+    sys.modules.setdefault('past', _past)
+    sys.modules.setdefault('past.builtins', _past_builtins)
+    sys.modules.setdefault('past.translation', _past_translation)
+
+# Install before any rubik_solver imports
+_install_past_shim()
 
 _RUBIK_SOLVER_AVAILABLE = False
 try:
