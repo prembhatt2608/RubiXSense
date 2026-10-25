@@ -79,6 +79,8 @@ export async function checkBackendHealth() {
   try {
     const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) throw new Error('Not JSON');
     return await res.json();
   } catch (err) {
     return {
@@ -174,6 +176,8 @@ export async function generateScrambleAPI(movesCount = 20) {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Scramble API unavailable');
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) throw new Error('Not JSON');
     return await res.json();
   } catch {
     // Client-side fallback random scramble generator
