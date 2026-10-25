@@ -3,9 +3,6 @@
   "private": true,
   "version": "1.0.0",
   "description": "AI-powered Rubik's Cube scanner and 3D solver",
-  "workspaces": [
-    "frontend"
-  ],
   "scripts": {
     "build": "node build.js",
     "dev": "npm --prefix frontend run dev",
